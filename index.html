@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI Video Intelligence Studio — Reverse-Engineer Viral Video</title>
+<meta name="description" content="Upload a short-form video and get a full AI creative teardown: viral scores, scene breakdown, and ready-to-use production assets." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ===================================================================
+     BACKGROUND — ambient gradient glow layer sits behind every screen
+     =================================================================== -->
+<div class="bg-glow bg-glow--a" aria-hidden="true"></div>
+<div class="bg-glow bg-glow--b" aria-hidden="true"></div>
+
+<!-- ===================================================================
+     HEADER
+     =================================================================== -->
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="logo">
+      <span class="logo-ring" aria-hidden="true"></span>
+      <span class="logo-text">AI Video Intelligence <strong>Studio</strong></span>
+    </div>
+    <nav class="topbar-actions">
+      <button id="apiKeyBtn" class="btn btn-glass" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L19 4"/><path d="M15 9l4.5 4.5"/></svg>
+        <span id="apiKeyBtnLabel">Connect OpenAI key</span>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<!-- ===================================================================
+     API KEY MODAL
+     =================================================================== -->
+<div id="modalOverlay" class="modal-overlay hidden"></div>
+<div id="apiKeyModal" class="modal hidden" role="dialog" aria-label="AI provider settings">
+  <div class="modal-head">
+    <h2>Connect an AI provider</h2>
+    <button id="closeApiModal" class="icon-btn" aria-label="Close">&times;</button>
+  </div>
+  <p class="modal-copy">
+    The Studio calls your chosen provider's API directly from your browser to power analysis, scoring, and asset generation. Your key is saved only in this browser's local storage — it is never sent to us, never hardcoded, and never shown again once saved.
+  </p>
+
+  <label class="field-label" for="providerSelect">Provider</label>
+  <select id="providerSelect" class="field-input">
+    <option value="gemini">Google Gemini — free, no credit card</option>
+    <option value="openai">OpenAI — paid (small minimum top-up)</option>
+  </select>
+  <p class="field-hint" id="providerHint"></p>
+
+  <label class="field-label" for="apiKeyInput">API key</label>
+  <input id="apiKeyInput" class="field-input" type="password" placeholder="" autocomplete="off" spellcheck="false" />
+  <p class="field-hint" id="getKeyHint"></p>
+
+  <label class="field-label" for="modelSelect">Model</label>
+  <select id="modelSelect" class="field-input"></select>
+
+  <div class="modal-row">
+    <div class="key-status" id="keyStatus">No key saved yet.</div>
+  </div>
+  <div class="modal-actions">
+    <button id="removeKeyBtn" class="btn btn-ghost" type="button">Remove key</button>
+    <button id="saveKeyBtn" class="btn btn-primary" type="button">Save key</button>
+  </div>
+</div>
+
+<main>
+
+  <!-- ===================================================================
+       LANDING / HERO
+       =================================================================== -->
+  <section class="hero" id="hero">
+    <div class="hero-copy">
+      <span class="eyebrow">Creative reverse-engineering, not captions</span>
+      <h1>Find out <em>why</em> a video works — then build the next one.</h1>
+      <p class="hero-sub">
+        Upload any short-form video. The Studio scores its viral mechanics, breaks it down scene by scene,
+        and hands you production-ready prompts, scripts, and a stronger version of the concept — all in your browser.
+      </p>
+      <div class="hero-actions">
+        <button class="btn btn-primary btn-lg" id="heroUploadBtn" type="button">Analyze a video</button>
+        <button class="btn btn-glass btn-lg" id="heroKeyBtn" type="button">Connect your OpenAI key</button>
+      </div>
+      <div class="hero-flow" aria-hidden="true">
+        <span>Upload</span><i></i><span>Preview</span><i></i><span>AI analysis</span><i></i><span>Breakdown</span><i></i><span>Assets</span><i></i><span>Export</span>
+      </div>
+    </div>
+
+    <!-- Signature element: the viral-potential score ring, shown as a live demo -->
+    <div class="hero-demo" aria-hidden="true">
+      <div class="score-ring score-ring--lg" style="--pct:82; --ring-color: var(--score-high);">
+        <div class="score-ring-fill"></div>
+        <div class="score-ring-core">
+          <span class="score-ring-num">82</span>
+          <span class="score-ring-label">Viral Potential</span>
+        </div>
+      </div>
+      <div class="hero-demo-bars">
+        <div class="demo-bar"><span>Stop Scroll</span><i style="--w:91%"></i></div>
+        <div class="demo-bar"><span>Emotional Impact</span><i style="--w:76%"></i></div>
+        <div class="demo-bar"><span>Checkout Potential</span><i style="--w:64%"></i></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================
+       UPLOAD
+       =================================================================== -->
+  <section class="panel" id="uploadSection">
+    <div class="panel-head">
+      <span class="step-badge">Step 1</span>
+      <h2>Upload your video</h2>
+      <p>MP4, MOV, or WEBM. Everything is read locally in your browser first.</p>
+    </div>
+
+    <div id="dropZone" class="drop-zone" tabindex="0" role="button" aria-label="Upload a video, or press Enter to browse files">
+      <div class="drop-zone-inner">
+        <div class="upload-glyph" aria-hidden="true">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 16V4m0 0L7 9m5-5l5 5"/><path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>
+        </div>
+        <p class="drop-title">Drag &amp; drop your video, or</p>
+        <button type="button" class="btn btn-primary" id="browseBtn">Browse files</button>
+        <input type="file" id="fileInput" accept="video/mp4,video/quicktime,video/webm,video/x-m4v,video/*" hidden />
+      </div>
+    </div>
+
+    <!-- Preview + local metadata -->
+    <div id="previewWrap" class="preview-wrap hidden">
+      <div class="preview-video-card">
+        <video id="previewVideo" controls></video>
+      </div>
+      <div class="meta-grid" id="metaGrid"></div>
+    </div>
+
+    <div class="upload-actions hidden" id="uploadActions">
+      <button class="btn btn-primary btn-lg" id="analyzeBtn" type="button">✨ Run AI Analysis</button>
+      <button class="btn btn-ghost" id="changeFileBtn" type="button">Choose a different video</button>
+    </div>
+
+    <!-- Progress -->
+    <div id="progressWrap" class="progress-wrap hidden">
+      <div class="progress-steps" id="progressSteps"></div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-label" id="progressLabel">Reading file…</div>
+    </div>
+  </section>
+
+  <!-- ===================================================================
+       RESULTS DASHBOARD
+       =================================================================== -->
+  <div id="resultsRoot" class="hidden">
+
+    <nav class="dash-tabs" id="dashTabs" role="tablist">
+      <button class="dash-tab active" data-tab="overview">Overview &amp; Scores</button>
+      <button class="dash-tab" data-tab="reverse">Reverse Engineering</button>
+      <button class="dash-tab" data-tab="scenes">Scene Breakdown</button>
+      <button class="dash-tab" data-tab="assets">Production Assets</button>
+      <button class="dash-tab" data-tab="improve">🔥 Make It Better</button>
+    </nav>
+
+    <!-- ---------- TAB: Overview & Scores ---------- -->
+    <section class="dash-panel active" id="tab-overview">
+      <div class="panel-head">
+        <span class="step-badge">Step 2</span>
+        <h2>Overview &amp; viral scoring</h2>
+        <p>Nine scores (1–100), each explained — plus the creative signals driving them.</p>
+      </div>
+      <div class="overview-grid">
+        <div class="overall-score-card">
+          <div class="score-ring score-ring--lg" id="overallRing">
+            <div class="score-ring-fill"></div>
+            <div class="score-ring-core">
+              <span class="score-ring-num" id="overallScoreNum">—</span>
+              <span class="score-ring-label">Overall Viral Potential</span>
+            </div>
+          </div>
+        </div>
+        <div class="score-list" id="scoreList"><!-- injected score bars --></div>
+      </div>
+      <div class="card-grid" id="signalCardGrid"><!-- injected: hook, storytelling, emotional flow, etc --></div>
+    </section>
+
+    <!-- ---------- TAB: Reverse Engineering ---------- -->
+    <section class="dash-panel" id="tab-reverse">
+      <div class="panel-head">
+        <span class="step-badge">Step 3</span>
+        <h2>Why this video works</h2>
+        <p>The mechanics behind the hook, the emotion, the sell — and where it's leaving performance on the table.</p>
+      </div>
+      <div class="reverse-grid" id="reverseGrid"><!-- injected --></div>
+      <div class="strengths-weaknesses" id="strengthsWeaknesses"><!-- injected --></div>
+    </section>
+
+    <!-- ---------- TAB: Scene Breakdown ---------- -->
+    <section class="dash-panel" id="tab-scenes">
+      <div class="panel-head">
+        <span class="step-badge">Step 4</span>
+        <h2>Scene-by-scene breakdown</h2>
+        <p>Every detected scene, with a real frame pulled from your footage.</p>
+      </div>
+      <div class="table-wrap">
+        <table class="scene-table" id="sceneTable">
+          <thead>
+            <tr>
+              <th>Scene</th><th>Time</th><th>Frame</th><th>Purpose</th><th>Visual</th>
+              <th>Camera</th><th>Motion</th><th>Emotion</th><th>Voice Over</th><th>Subtitle</th><th>Transition</th>
+            </tr>
+          </thead>
+          <tbody id="sceneTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ---------- TAB: Production Assets ---------- -->
+    <section class="dash-panel" id="tab-assets">
+      <div class="panel-head">
+        <span class="step-badge">Step 5</span>
+        <h2>AI production assets</h2>
+        <p>Ready-to-paste concepts, prompts, and scripts, generated from this teardown.</p>
+      </div>
+      <div class="asset-tabs" id="assetTabs" role="tablist"></div>
+      <div class="asset-panel">
+        <div class="asset-toolbar">
+          <button class="btn btn-glass" id="copyAssetBtn" type="button">Copy</button>
+        </div>
+        <pre class="asset-output" id="assetOutput" tabindex="0"></pre>
+      </div>
+    </section>
+
+    <!-- ---------- TAB: Make It Better ---------- -->
+    <section class="dash-panel" id="tab-improve">
+      <div class="panel-head">
+        <span class="step-badge">Step 6</span>
+        <h2>🔥 Make it better</h2>
+        <p>Generates a stronger, original concept that fixes this video's weak points — never a copy of the original.</p>
+      </div>
+      <div class="improve-intro" id="improveIntro">
+        <button class="btn btn-primary btn-lg" id="improveBtn" type="button">🔥 Make It Better</button>
+        <p class="improve-hint">Optimizes hook, storytelling, retention, emotion, selling, and checkout potential.</p>
+      </div>
+      <div class="improve-result hidden" id="improveResult">
+        <div class="score-compare" id="scoreCompare"></div>
+        <div class="asset-tabs" id="improveTabs" role="tablist"></div>
+        <div class="asset-panel">
+          <div class="asset-toolbar">
+            <button class="btn btn-glass" id="copyImproveBtn" type="button">Copy</button>
+          </div>
+          <pre class="asset-output" id="improveOutput" tabindex="0"></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- EXPORT BAR ---------- -->
+    <section class="panel export-panel">
+      <div class="panel-head">
+        <span class="step-badge">Step 7</span>
+        <h2>Export</h2>
+        <p>Take the entire teardown — scores, breakdown, and assets — with you.</p>
+      </div>
+      <div class="export-row">
+        <button class="btn btn-glass" id="exportTxt" type="button">Download .TXT</button>
+        <button class="btn btn-glass" id="exportMd" type="button">Download .MD</button>
+        <button class="btn btn-glass" id="exportJson" type="button">Download .JSON</button>
+        <button class="btn btn-ghost" id="startOverBtn" type="button">Analyze another video</button>
+      </div>
+    </section>
+  </div>
+
+</main>
+
+<footer class="site-footer">
+  <p>Runs entirely in your browser. Your video never leaves your device. Your API key is used only to call OpenAI directly and is stored only in this browser.</p>
+</footer>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script src="script.js"></script>
+</body>
+</html>
