@@ -33,7 +33,12 @@ const Utils = (() => {
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
     }[c]));
   }
-  return { clamp, fmtTime, fmtBytes, scoreColor, parseJsonLoose, escapeHtml };
+    function revokeObjectURL(url) {
+    if (url && url.startsWith('blob:')) {
+      URL.revokeObjectURL(url);
+    }
+  }
+  return { clamp, fmtTime, fmtBytes, scoreColor, parseJsonLoose, escapeHtml, revokeObjectURL };
 })();
 
 /* ============================= STORAGE ============================= */
