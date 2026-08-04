@@ -62,10 +62,19 @@ const Storage = (() => {
     try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; }
     catch { return []; }
   }
-  function saveHistory(item) {
-    const history = getHistory();
-    history.unshift(item);
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, 10)));
+    function saveHistory(item) {
+    try {
+      const history = getHistory();
+      history.unshift(item);
+      // Batasi ukuran string agar tidak meledak LocalStorage
+      const safeHistory = history.slice(0, 10);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(safeHistory));
+    } catch (e) {
+      console.warn("LocalStorage penuh, menghapus riwayat terlama...", e);
+      // Jika penuh, hapus 3 terlama lalu coba simpan lagi
+      const history = getHistory().slice(0, 7);
+      try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch {}
+    }
   }
   function clearHistory() { localStorage.removeItem(HISTORY_KEY); }
 
@@ -1023,7 +1032,7 @@ const Exporter = (() => {
   }
 
   /* ---- Upload ---- */
-  function wireUpload() {
+   function wireUpload() {
     const { dropZone, fileInput, browseBtn, changeFileBtn, heroUploadBtn } = UI.els;
     browseBtn.addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
     dropZone.addEventListener('click', () => fileInput.click());
@@ -1033,12 +1042,17 @@ const Exporter = (() => {
     ['dragleave', 'drop'].forEach(evt => dropZone.addEventListener(evt, (e) => { e.preventDefault(); dropZone.classList.remove('drag-over'); }));
     dropZone.addEventListener('drop', (e) => { const f = e.dataTransfer.files?.[0]; if (f) loadFile(f); });
     fileInput.addEventListener('change', () => { const f = fileInput.files?.[0]; if (f) loadFile(f); });
-    changeFileBtn.addEventListener('click', () => { UI.els.previewWrap.classList.add('hidden'); UI.els.uploadActions.classList.add('hidden'); UI.els.fileInput.value = ''; state.file = null; });
+    changeFileBtn.addEventListener('click', () => {
+      Utils.revokeObjectURL(state.ingestData?.objectUrl); // Cegah memory leak
+      UI.els.previewWrap.classList.add('hidden'); UI.els.uploadActions.classList.add('hidden'); UI.els.fileInput.value = '';
+      state.file = null; state.ingestData = null;
+    });
   }
 
   function loadFile(file) {
     const isVideoLike = file.type.startsWith('video/') || /\.(mp4|mov|webm|m4v)$/i.test(file.name);
     if (!isVideoLike) { UI.toast('Unggah file MP4, MOV, atau WEBM ya.'); return; }
+    Utils.revokeObjectURL(state.ingestData?.objectUrl); // Hapus blob lama jika ada
     state.file = file;
     UI.els.previewVideo.src = URL.createObjectURL(file);
     UI.els.previewWrap.classList.remove('hidden'); UI.els.uploadActions.classList.remove('hidden');
@@ -1047,10 +1061,15 @@ const Exporter = (() => {
   }
 
   /* ---- Analyze ---- */
-  function wireAnalyze() {
+    function wireAnalyze() {
     UI.els.analyzeBtn.addEventListener('click', async () => {
       if (!state.file) { UI.toast('Pilih video dulu ya.'); return; }
       if (!Storage.hasKey()) { UI.toast('Hubungkan API key dulu.'); UI.openModal(UI.els.apiKeyModal); return; }
+      
+      // Cegah Double Submit
+      UI.els.analyzeBtn.disabled = true;
+      UI.els.analyzeBtn.textContent = 'Menganalisis...';
+      
       UI.els.progressWrap.classList.remove('hidden'); UI.setProgress(2, 'metadata', 'Membaca file…');
       try {
         const ingestData = await VideoIngest.ingest(state.file, hiddenVideo, (pct, stage) => {
@@ -1061,15 +1080,22 @@ const Exporter = (() => {
         const providerLabel = Storage.getProvider() === 'gemini' ? 'Gemini' : 'OpenAI';
         if (ingestData.audio?.available && Storage.getProvider() === 'openai') UI.toast('Audio terdeteksi. Mentranskripsi via Whisper...', 4000);
         UI.setProgress(75, 'ai-analysis', `Mengirim ${ingestData.scenes.length} scene ke ${providerLabel}…`);
+        
         const result = await AIClient.analyze(ingestData);
         state.result = result;
         UI.setProgress(100, 'ai-analysis', 'Analisis selesai.');
         setTimeout(() => UI.els.progressWrap.classList.add('hidden'), 400);
         renderResults();
-      } catch (err) { console.error(err); UI.els.progressWrap.classList.add('hidden'); handleApiError(err); }
+      } catch (err) { 
+        console.error(err); UI.els.progressWrap.classList.add('hidden'); handleApiError(err); 
+      } finally {
+        // Kembalikan tombol walau sukses atau gagal
+        UI.els.analyzeBtn.disabled = false;
+        UI.els.analyzeBtn.textContent = '✨ Jalankan Analisis AI';
+      }
     });
   }
-
+  
   function handleApiError(err) {
     const msg = String(err?.message || err);
     const providerLabel = Storage.getProvider() === 'gemini' ? 'Gemini' : 'OpenAI';
@@ -1127,6 +1153,7 @@ const Exporter = (() => {
     UI.els.exportMd.addEventListener('click', () => { if (state.result) Exporter.exportMd(state.ingestData, state.result, state.improveResult); });
     UI.els.exportJson.addEventListener('click', () => { if (state.result) Exporter.exportJson(state.ingestData, state.result, state.improveResult); });
     UI.els.startOverBtn.addEventListener('click', () => {
+      Utils.revokeObjectURL(state.ingestData?.objectUrl); // Cegah memory leak
       state.file = null; state.ingestData = null; state.result = null; state.improveResult = null;
       UI.els.resultsRoot.classList.add('hidden'); UI.els.resultsRoot.classList.remove('has-results');
       UI.els.improveResult.classList.add('hidden'); UI.els.previewWrap.classList.add('hidden'); UI.els.uploadActions.classList.add('hidden');
