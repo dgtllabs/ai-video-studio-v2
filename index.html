@@ -23,15 +23,21 @@
       <span class="logo-text">AI Video Intelligence <strong>Studio</strong></span>
     </div>
     <nav class="topbar-actions">
+      <button id="historyBtn" class="btn btn-glass" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <span>Riwayat</span>
+      </button>
       <button id="apiKeyBtn" class="btn btn-glass" type="button">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L19 4"/><path d="M15 9l4.5 4.5"/></svg>
-        <span id="apiKeyBtnLabel">Hubungkan API key gratis</span>
+        <span id="apiKeyBtnLabel">Hubungkan API Key</span>
       </button>
     </nav>
   </div>
 </header>
 
 <div id="modalOverlay" class="modal-overlay hidden"></div>
+
+<!-- API Key Modal -->
 <div id="apiKeyModal" class="modal hidden" role="dialog" aria-label="Pengaturan penyedia AI">
   <div class="modal-head">
     <h2>Hubungkan penyedia AI</h2>
@@ -61,6 +67,20 @@
   <div class="modal-actions">
     <button id="removeKeyBtn" class="btn btn-ghost" type="button">Hapus key</button>
     <button id="saveKeyBtn" class="btn btn-primary" type="button">Simpan key</button>
+  </div>
+</div>
+
+<!-- History Modal -->
+<div id="historyModal" class="modal hidden" role="dialog" aria-label="Riwayat Analisis">
+  <div class="modal-head">
+    <h2>Riwayat Analisis</h2>
+    <button id="closeHistoryModal" class="icon-btn" aria-label="Tutup">&times;</button>
+  </div>
+  <p class="modal-copy">10 analisis atau prompt terakhir yang kamu buat di browser ini.</p>
+  <div id="historyList" class="history-list"></div>
+  <div class="modal-actions" style="justify-content: space-between;">
+    <button id="clearHistoryBtn" class="btn btn-ghost" type="button">Hapus Semua Riwayat</button>
+    <button id="closeHistoryBtn" class="btn btn-primary" type="button">Tutup</button>
   </div>
 </div>
 
@@ -115,6 +135,7 @@
     </div>
   </section>
 
+  <!-- MODE 1: VIRAL VIDEO -->
   <section class="panel mode-panel" id="uploadSection" data-mode-panel="video">
     <div class="panel-head">
       <span class="step-badge">Langkah 1</span>
@@ -153,7 +174,6 @@
   </section>
 
   <div id="resultsRoot" class="hidden mode-panel" data-mode-panel="video">
-
     <nav class="dash-tabs" id="dashTabs" role="tablist">
       <button class="dash-tab active" data-tab="overview">Ringkasan &amp; Skor</button>
       <button class="dash-tab" data-tab="reverse">Bedah Kreatif</button>
@@ -216,7 +236,7 @@
       <div class="panel-head">
         <span class="step-badge">Langkah 5</span>
         <h2>Prompt produksi AI</h2>
-        <p><strong>Prompt 1</strong> = tempel ke ChatGPT untuk bikin gambar Image Grid Storyboard (ChatGPT akan tanya dulu: langsung buat atau revisi). <strong>Prompt 2</strong> baru dipakai SETELAH storyboard itu final — lampirkan gambarnya bareng Prompt 2 untuk dapat JSON prompt video generator (OmniFlash/Veo/Kling/Hailuo).</p>
+        <p><strong>Prompt 1</strong> = tempel ke ChatGPT untuk bikin gambar Image Grid Storyboard. <strong>Prompt 2</strong> baru dipakai SETELAH storyboard itu final — lampirkan gambarnya bareng Prompt 2 untuk dapat JSON prompt video generator (OmniFlash/Veo/Kling/Hailuo).</p>
       </div>
       <div class="asset-tabs" id="assetTabs" role="tablist"></div>
       <div class="asset-panel">
@@ -264,6 +284,7 @@
     </section>
   </div>
 
+  <!-- MODE 2: PROMO -->
   <section class="panel mode-panel hidden" id="promoUploadSection" data-mode-panel="promo">
     <div class="panel-head">
       <span class="step-badge">Langkah 1</span>
@@ -366,6 +387,7 @@
     </section>
   </div>
 
+  <!-- MODE 3: FREE MODE -->
   <section class="panel mode-panel hidden" id="freeUploadSection" data-mode-panel="free">
     <div class="panel-head">
       <span class="step-badge">Langkah 1</span>
