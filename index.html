@@ -132,6 +132,11 @@
         💡 Video Bebas (dari Ide)
         <span>Tanpa video referensi — cukup judul &amp; tema, AI yang susun sisanya</span>
       </button>
+      <!-- MODE 4: HARD-SELL -->
+      <button class="mode-btn" data-mode="hardsell" type="button">
+        🔥 Hard-Sell Produk Viral
+        <span>Unggah foto produk (+ opsional video) → buat prompt iklan agresif & viral</span>
+      </button>
     </div>
   </section>
 
@@ -472,6 +477,104 @@
         <button class="btn btn-glass" id="freeExportMd" type="button">Unduh .MD</button>
         <button class="btn btn-glass" id="freeExportJson" type="button">Unduh .JSON</button>
         <button class="btn btn-ghost" id="freeStartOverBtn" type="button">Buat ide lain</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- MODE 4: HARD-SELL PRODUK -->
+  <section class="panel mode-panel hidden" id="hardSellUploadSection" data-mode-panel="hardsell">
+    <div class="panel-head">
+      <span class="step-badge">Langkah 1</span>
+      <h2>🔥 Promosi Produk Hard-Sell</h2>
+      <p>Unggah <strong>foto produk</strong> (wajib). Opsional: unggah <strong>video referensi</strong> agar AI meniru gayanya. Durasi video output dikunci 10, 20, atau 30 detik.</p>
+    </div>
+
+    <label class="field-label" style="margin-top:10px;">Foto Produk (Wajib)</label>
+    <div id="hsImageDropZone" class="drop-zone" tabindex="0" role="button" aria-label="Unggah foto produk">
+      <div class="drop-zone-inner">
+        <div class="upload-glyph" aria-hidden="true">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 16V4m0 0L7 9m5-5l5 5"/><path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>
+        </div>
+        <p class="drop-title">Drag &amp; drop foto produk (bisa lebih dari 1), atau</p>
+        <button type="button" class="btn btn-primary" id="hsImageBrowseBtn">Pilih foto</button>
+        <input type="file" id="hsImageInput" accept="image/*" multiple hidden />
+      </div>
+    </div>
+    <div id="hsImagePreview" class="image-preview-grid hidden"></div>
+
+    <label class="field-label" style="margin-top:24px;">Video Referensi Gaya (Opsional)</label>
+    <div id="hsVideoDropZone" class="drop-zone" tabindex="0" role="button" aria-label="Unggah video referensi">
+      <div class="drop-zone-inner">
+        <div class="upload-glyph" aria-hidden="true">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+        </div>
+        <p class="drop-title">Drag &amp; drop video referensi (opsional), atau</p>
+        <button type="button" class="btn btn-glass" id="hsVideoBrowseBtn">Pilih video</button>
+        <input type="file" id="hsVideoInput" accept="video/mp4,video/quicktime,video/webm,video/*" hidden />
+      </div>
+    </div>
+    <div id="hsVideoPreviewWrap" class="preview-wrap hidden">
+      <div class="preview-video-card"><video id="hsPreviewVideo" controls></video></div>
+    </div>
+
+    <div class="promo-form" id="hsForm" style="margin-top:24px;">
+      <label class="field-label" for="hsProdName">Nama Produk <span style="color:var(--magenta)">*wajib</span></label>
+      <input id="hsProdName" class="field-input" type="text" placeholder="Contoh: Serum Wajah GlowX" />
+
+      <label class="field-label" for="hsOffer">Harga / Promo / Penawaran</label>
+      <input id="hsOffer" class="field-input" type="text" placeholder="Contoh: Buy 1 Get 1, Diskon 50% hari ini" />
+
+      <label class="field-label" for="hsSellingPoint">Keunggulan utama produk</label>
+      <textarea id="hsSellingPoint" class="field-input field-textarea" rows="2" placeholder="Contoh: Mencerahkan 3x lebih cepat, aman untuk kulit sensitif"></textarea>
+
+      <label class="field-label" for="hsDuration">Durasi Video Output</label>
+      <select id="hsDuration" class="field-input">
+        <option value="10 detik">10 detik</option>
+        <option value="20 detik" selected>20 detik</option>
+        <option value="30 detik">30 detik</option>
+      </select>
+
+      <div class="upload-actions" style="margin-top:22px;">
+        <button class="btn btn-primary btn-lg" id="hsAnalyzeBtn" type="button">✨ Buat Prompt Hard-Sell</button>
+      </div>
+    </div>
+
+    <div id="hsProgressWrap" class="progress-wrap hidden">
+      <div class="progress-track"><div class="progress-fill" id="hsProgressFill"></div></div>
+      <div class="progress-label" id="hsProgressLabel">Memproses...</div>
+    </div>
+  </section>
+
+  <div id="hardSellResultsRoot" class="hidden mode-panel" data-mode-panel="hardsell">
+    <section class="panel">
+      <div class="panel-head">
+        <span class="step-badge">Langkah 2</span>
+        <h2>Konsep &amp; prompt hard-sell</h2>
+        <p><strong>Prompt 1</strong> = tempel ke ChatGPT bersama foto produk kamu untuk bikin Storyboard. <strong>Prompt 2</strong> = setelah storyboard jadi, tempel untuk dapat JSON video generator.</p>
+      </div>
+      <div class="card-grid" id="hsConceptCard"></div>
+    </section>
+
+    <section class="panel">
+      <div class="asset-tabs" id="hsAssetTabs" role="tablist"></div>
+      <div class="asset-panel">
+        <div class="asset-toolbar">
+          <button class="btn btn-glass" id="copyHsAssetBtn" type="button">Salin</button>
+        </div>
+        <pre class="asset-output" id="hsAssetOutput" tabindex="0"></pre>
+      </div>
+    </section>
+
+    <section class="panel export-panel">
+      <div class="panel-head">
+        <span class="step-badge">Langkah 3</span>
+        <h2>Ekspor</h2>
+      </div>
+      <div class="export-row">
+        <button class="btn btn-glass" id="hsExportTxt" type="button">Unduh .TXT</button>
+        <button class="btn btn-glass" id="hsExportMd" type="button">Unduh .MD</button>
+        <button class="btn btn-glass" id="hsExportJson" type="button">Unduh .JSON</button>
+        <button class="btn btn-ghost" id="hsStartOverBtn" type="button">Buat produk lain</button>
       </div>
     </section>
   </div>
