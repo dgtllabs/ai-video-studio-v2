@@ -620,7 +620,7 @@ ATURAN WAJIB:
 1. Langsung buat Image Grid Storyboard sesuai prompt ini.
 2. Revisi/optimalkan dulu promptnya sebelum dibuat gambarnya.'
 Jika saya pilih 1, langsung buat gambar. Jika saya pilih 2, bantu revisi dulu."
-- Durasi WAJIB ${10, 20, atau 30} detik sesuai input user. Sebutkan eksplisit.
+- Durasi WAJIB {{DURASI}} detik sesuai input user. Sebutkan eksplisit.
 - "assets.videoGenPrompt": Template TERPISAH. WAJIB DIAWALI: "Input adalah gambar storyboard final (lampirkan). JANGAN analisis ulang." Isi JSON untuk OmniFlash, Veo, Kling, Hailuo. Voice over WAJIB lengkap.
 - Semua isi teks WAJIB Bahasa Indonesia yang natural.`;
 
@@ -649,7 +649,7 @@ Jika saya pilih 1, langsung buat gambar. Jika saya pilih 2, bantu revisi dulu."
         parts.push({ inline_data: { mime_type: 'image/jpeg', data: (s.thumbUrl || '').split(',')[1] || '' } });
       });
     }
-    parts.push({ text: SCHEMA.replace('${10, 20, atau 30}', form.duration) });
+    parts.push({ text: SCHEMA.replace('{{DURASI}}', form.duration) });
     return parts;
   }
 
@@ -665,7 +665,7 @@ Jika saya pilih 1, langsung buat gambar. Jika saya pilih 2, bantu revisi dulu."
         content.push({ type: 'image_url', image_url: { url: s.thumbUrl, detail: 'low' } });
       });
     }
-    content.push({ type: 'text', text: SCHEMA.replace('${10, 20, atau 30}', form.duration) });
+    content.push({ type: 'text', text: SCHEMA.replace('{{DURASI}}', form.duration) });
     return [{ role: 'system', content: SYSTEM }, { role: 'user', content }];
   }
 
