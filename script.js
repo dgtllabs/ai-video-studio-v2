@@ -33,12 +33,20 @@ const Utils = (() => {
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
     }[c]));
   }
-    function revokeObjectURL(url) {
+  function revokeObjectURL(url) {
     if (url && url.startsWith('blob:')) {
       URL.revokeObjectURL(url);
     }
   }
-  return { clamp, fmtTime, fmtBytes, scoreColor, parseJsonLoose, escapeHtml, revokeObjectURL };
+  function fileToDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+  return { clamp, fmtTime, fmtBytes, scoreColor, parseJsonLoose, escapeHtml, revokeObjectURL, fileToDataUrl };
 })();
 
 /* ============================= STORAGE ============================= */
@@ -67,16 +75,14 @@ const Storage = (() => {
     try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; }
     catch { return []; }
   }
-    function saveHistory(item) {
+  function saveHistory(item) {
     try {
       const history = getHistory();
       history.unshift(item);
-      // Batasi ukuran string agar tidak meledak LocalStorage
       const safeHistory = history.slice(0, 10);
       localStorage.setItem(HISTORY_KEY, JSON.stringify(safeHistory));
     } catch (e) {
       console.warn("LocalStorage penuh, menghapus riwayat terlama...", e);
-      // Jika penuh, hapus 3 terlama lalu coba simpan lagi
       const history = getHistory().slice(0, 7);
       try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch {}
     }
@@ -597,6 +603,86 @@ Setelah blok di atas, lanjutkan dengan detail lengkap prompt Image Grid Storyboa
   return { analyze };
 })();
 
+/* ============================= HARD-SELL CLIENT ============================= */
+const HardSellClient = (() => {
+  const SCHEMA = `Balas HANYA dengan satu objek JSON mentah tanpa markdown fences. Gunakan persis bentuk ini:
+{
+  "concept": "",
+  "assets": { "masterPrompt": "", "videoGenPrompt": "", "voiceOverScript": "", "caption": "", "cta": "" }
+}
+ATURAN WAJIB:
+- "concept": ringkasan singkat (3-5 kalimat) strategi hard-sell yang akan dipakai.
+- Jika video referensi disediakan: buat prompt yang MENIRU GAYA & TEKNIK video referensi (hook, pacing, editing) tapi menerapkannya ke produk dari foto yang dilampirkan.
+- Jika TIDAK ada video referensi: buat konsep HARD-SELL dari nol yang sangat agresif, memancing FOMO, cepat, dan viral.
+- "assets.masterPrompt": SATU prompt utuh untuk Image Grid Storyboard. WAJIB menyuruh ChatGPT menggunakan foto produk yang dilampirkan sebagai visual utama. WAJIB DIAWALI dengan blok serah-terima:
+"CATATAN UNTUK CHATGPT: Setelah kamu memahami MASTER PROMPT ini, JANGAN langsung membuat gambar. Tampilkan dulu pesan ini ke saya dan TUNGGU balasan saya:
+'MASTER PROMPT berhasil dipahami. Silakan pilih langkah berikut:
+1. Langsung buat Image Grid Storyboard sesuai prompt ini.
+2. Revisi/optimalkan dulu promptnya sebelum dibuat gambarnya.'
+Jika saya pilih 1, langsung buat gambar. Jika saya pilih 2, bantu revisi dulu."
+- Durasi WAJIB ${10, 20, atau 30} detik sesuai input user. Sebutkan eksplisit.
+- "assets.videoGenPrompt": Template TERPISAH. WAJIB DIAWALI: "Input adalah gambar storyboard final (lampirkan). JANGAN analisis ulang." Isi JSON untuk OmniFlash, Veo, Kling, Hailuo. Voice over WAJIB lengkap.
+- Semua isi teks WAJIB Bahasa Indonesia yang natural.`;
+
+  const SYSTEM = 'Kamu adalah creative director iklan hard-sell & performance marketing yang ahli. Kamu selalu membalas dengan JSON valid sesuai skema, dalam Bahasa Indonesia yang natural.';
+
+  function introText(form, hasVideo, hasImages) {
+    const parts = [`Buatkan prompt iklan hard-sell untuk produk: "${form.name}".`];
+    if (form.offer) parts.push(`Penawaran: ${form.offer}.`);
+    if (form.sellingPoint) parts.push(`Keunggulan: ${form.sellingPoint}.`);
+    parts.push(`Durasi video WAJIB ${form.duration} (kelipatan 10).`);
+    
+    if (hasVideo) parts.push(`Saya melampirkan ${hasImages} foto produk DAN frame scene dari video referensi. Tiru gaya video referensinya, tapi pakai produk dari foto.`);
+    else parts.push(`Saya hanya melampirkan ${hasImages} foto produk. Buat konsep viral dari nol.`);
+    return parts.join(' ');
+  }
+
+  function buildGeminiParts(form, productImages, ingestData) {
+    const parts = [{ text: introText(form, !!ingestData, productImages.length) }];
+    productImages.forEach((img, i) => {
+      parts.push({ text: `Foto Produk ${i+1}:` });
+      parts.push({ inline_data: { mime_type: 'image/jpeg', data: img.split(',')[1] || '' } });
+    });
+    if (ingestData) {
+      ingestData.scenes.forEach((s) => {
+        parts.push({ text: `Scene Referensi ${s.index}:` });
+        parts.push({ inline_data: { mime_type: 'image/jpeg', data: (s.thumbUrl || '').split(',')[1] || '' } });
+      });
+    }
+    parts.push({ text: SCHEMA.replace('${10, 20, atau 30}', form.duration) });
+    return parts;
+  }
+
+  function buildOpenAIMessages(form, productImages, ingestData) {
+    const content = [{ type: 'text', text: introText(form, !!ingestData, productImages.length) }];
+    productImages.forEach((img, i) => {
+      content.push({ type: 'text', text: `Foto Produk ${i+1}:` });
+      content.push({ type: 'image_url', image_url: { url: img, detail: 'low' } });
+    });
+    if (ingestData) {
+      ingestData.scenes.forEach((s) => {
+        content.push({ type: 'text', text: `Scene Referensi ${s.index}:` });
+        content.push({ type: 'image_url', image_url: { url: s.thumbUrl, detail: 'low' } });
+      });
+    }
+    content.push({ type: 'text', text: SCHEMA.replace('${10, 20, atau 30}', form.duration) });
+    return [{ role: 'system', content: SYSTEM }, { role: 'user', content }];
+  }
+
+  async function analyze(form, productImages, ingestData) {
+    if (!Storage.hasKey()) throw new Error('NO_KEY');
+    const provider = Storage.getProvider();
+    const raw = provider === 'gemini'
+      ? await AIClient.callGemini(SYSTEM, buildGeminiParts(form, productImages, ingestData), AIClient.PROMO_MAX_TOKENS)
+      : await AIClient.callOpenAI(buildOpenAIMessages(form, productImages, ingestData), AIClient.PROMO_MAX_TOKENS);
+    const parsed = Utils.parseJsonLoose(raw);
+    if (!parsed) throw new Error('PARSE_ERROR');
+    return parsed;
+  }
+
+  return { analyze };
+})();
+
 /* ============================= UI ============================= */
 const UI = (() => {
   const $ = (sel) => document.querySelector(sel);
@@ -640,7 +726,12 @@ const UI = (() => {
      'freeProgressWrap','freeProgressFill','freeProgressLabel','freeResultsRoot','freeConceptCard',
      'freeAssetTabs','freeAssetOutput','copyFreeAssetBtn','freeExportTxt','freeExportMd','freeExportJson',
      'freeStartOverBtn',
-     'historyBtn', 'closeHistoryModal', 'closeHistoryBtn', 'historyModal', 'historyList', 'clearHistoryBtn'
+     'historyBtn', 'closeHistoryModal', 'closeHistoryBtn', 'historyModal', 'historyList', 'clearHistoryBtn',
+     'hsImageDropZone','hsImageInput','hsImageBrowseBtn','hsImagePreview',
+     'hsVideoDropZone','hsVideoInput','hsVideoBrowseBtn','hsVideoPreviewWrap','hsPreviewVideo',
+     'hsForm','hsProdName','hsOffer','hsSellingPoint','hsDuration','hsAnalyzeBtn',
+     'hsProgressWrap','hsProgressFill','hsProgressLabel','hardSellResultsRoot','hsConceptCard',
+     'hsAssetTabs','hsAssetOutput','copyHsAssetBtn','hsExportTxt','hsExportMd','hsExportJson','hsStartOverBtn'
     ].forEach(id => { els[id] = document.getElementById(id); });
   }
 
@@ -839,10 +930,17 @@ const UI = (() => {
     const keys = ['masterPrompt','videoGenPrompt','voiceOverScript','caption','cta','hashtag'];
     return renderAssetTabs(els.freeAssetTabs, els.freeAssetOutput, freeResult.assets || {}, keys);
   }
+  function renderHardSellConcept(result) {
+    els.hsConceptCard.innerHTML = `<div class="a-card" style="grid-column: 1 / -1;"><h3>Konsep Hard-Sell</h3><p>${Utils.escapeHtml(result.concept || '—')}</p></div>`;
+  }
+  function renderHardSellAssets(result) {
+    const keys = ['masterPrompt','videoGenPrompt','voiceOverScript','caption','cta'];
+    return renderAssetTabs(els.hsAssetTabs, els.hsAssetOutput, result.assets || {}, keys);
+  }
 
   function setMode(mode) {
     document.querySelectorAll('.mode-panel').forEach(el => {
-      const isResultsPanel = el.id === 'resultsRoot' || el.id === 'promoResultsRoot' || el.id === 'freeResultsRoot';
+      const isResultsPanel = el.id === 'resultsRoot' || el.id === 'promoResultsRoot' || el.id === 'freeResultsRoot' || el.id === 'hardSellResultsRoot';
       if (el.dataset.modePanel !== mode) {
         el.classList.add('hidden');
       } else if (!isResultsPanel) {
@@ -886,6 +984,7 @@ const UI = (() => {
     renderMeta, renderScores, renderSignals, renderReverse, renderSceneTable,
     renderAssets, renderImproveAssets, renderScoreCompare, wireDashTabs,
     renderPromoAssets, renderPromoConcept, renderFreeConcept, renderFreeAssets, setMode, wireModeSwitcher,
+    renderHardSellConcept, renderHardSellAssets,
     SCORE_LABELS, SIGNAL_LABELS, ASSET_LABELS,
   };
 })();
@@ -900,7 +999,6 @@ const Exporter = (() => {
   }
   function baseName(ingestData) { return (ingestData.fileName || 'video').replace(/\.[^/.]+$/, ''); }
   
-  // (Export functions kept minimal for brevity, same as original)
   function toTxt(ingestData, result, improveResult) {
     const lines = ['AI VIDEO INTELLIGENCE STUDIO — FULL TEARDOWN', '='.repeat(48), `File: ${ingestData.fileName}`, `Durasi: ${Utils.fmtTime(ingestData.duration)}`, ''];
     lines.push('-- SKOR --'); Object.entries(result.scores).forEach(([k, v]) => lines.push(`${UI.SCORE_LABELS[k] || k}: ${v.score} — ${v.explanation}`));
@@ -941,6 +1039,7 @@ const Exporter = (() => {
   const state = { file: null, ingestData: null, result: null, improveResult: null };
   const promoState = { file: null, ingestData: null, result: null, form: null };
   const freeState = { result: null, form: null };
+  const hsState = { images: [], videoFile: null, ingestData: null, result: null, form: null };
 
   const hiddenVideo = document.createElement('video');
   hiddenVideo.preload = 'metadata'; hiddenVideo.playsInline = true;
@@ -951,6 +1050,11 @@ const Exporter = (() => {
   hiddenPromoVideo.preload = 'metadata'; hiddenPromoVideo.playsInline = true;
   hiddenPromoVideo.style.cssText = 'position:fixed;opacity:0;pointer-events:none;width:1px;height:1px;';
   document.body.appendChild(hiddenPromoVideo);
+  
+  const hiddenHsVideo = document.createElement('video');
+  hiddenHsVideo.preload = 'metadata'; hiddenHsVideo.playsInline = true;
+  hiddenHsVideo.style.cssText = 'position:fixed;opacity:0;pointer-events:none;width:1px;height:1px;';
+  document.body.appendChild(hiddenHsVideo);
 
   function init() {
     UI.cacheEls();
@@ -971,6 +1075,7 @@ const Exporter = (() => {
     wirePromoExport();
     wireFreeAnalyze();
     wireFreeExport();
+    wireHardSell();
   }
 
   /* ---- Modal ---- */
@@ -1027,6 +1132,10 @@ const Exporter = (() => {
       promoState.result = item.result;
       UI.renderPromoConcept(item.result); UI.renderPromoAssets(item.result);
       UI.els.promoResultsRoot.classList.remove('hidden'); UI.els.promoResultsRoot.classList.add('has-results');
+    } else if (item.mode === 'Hard-Sell') {
+      hsState.result = item.result;
+      UI.renderHardSellConcept(item.result); UI.renderHardSellAssets(item.result);
+      UI.els.hardSellResultsRoot.classList.remove('hidden'); UI.els.hardSellResultsRoot.classList.add('has-results');
     } else {
       freeState.result = item.result;
       UI.renderFreeConcept(item.result); UI.renderFreeAssets(item.result);
@@ -1037,7 +1146,7 @@ const Exporter = (() => {
   }
 
   /* ---- Upload ---- */
-   function wireUpload() {
+  function wireUpload() {
     const { dropZone, fileInput, browseBtn, changeFileBtn, heroUploadBtn } = UI.els;
     browseBtn.addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
     dropZone.addEventListener('click', () => fileInput.click());
@@ -1048,7 +1157,7 @@ const Exporter = (() => {
     dropZone.addEventListener('drop', (e) => { const f = e.dataTransfer.files?.[0]; if (f) loadFile(f); });
     fileInput.addEventListener('change', () => { const f = fileInput.files?.[0]; if (f) loadFile(f); });
     changeFileBtn.addEventListener('click', () => {
-      Utils.revokeObjectURL(state.ingestData?.objectUrl); // Cegah memory leak
+      Utils.revokeObjectURL(state.ingestData?.objectUrl);
       UI.els.previewWrap.classList.add('hidden'); UI.els.uploadActions.classList.add('hidden'); UI.els.fileInput.value = '';
       state.file = null; state.ingestData = null;
     });
@@ -1057,7 +1166,7 @@ const Exporter = (() => {
   function loadFile(file) {
     const isVideoLike = file.type.startsWith('video/') || /\.(mp4|mov|webm|m4v)$/i.test(file.name);
     if (!isVideoLike) { UI.toast('Unggah file MP4, MOV, atau WEBM ya.'); return; }
-    Utils.revokeObjectURL(state.ingestData?.objectUrl); // Hapus blob lama jika ada
+    Utils.revokeObjectURL(state.ingestData?.objectUrl);
     state.file = file;
     UI.els.previewVideo.src = URL.createObjectURL(file);
     UI.els.previewWrap.classList.remove('hidden'); UI.els.uploadActions.classList.remove('hidden');
@@ -1066,12 +1175,11 @@ const Exporter = (() => {
   }
 
   /* ---- Analyze ---- */
-    function wireAnalyze() {
+  function wireAnalyze() {
     UI.els.analyzeBtn.addEventListener('click', async () => {
       if (!state.file) { UI.toast('Pilih video dulu ya.'); return; }
       if (!Storage.hasKey()) { UI.toast('Hubungkan API key dulu.'); UI.openModal(UI.els.apiKeyModal); return; }
       
-      // Cegah Double Submit
       UI.els.analyzeBtn.disabled = true;
       UI.els.analyzeBtn.textContent = 'Menganalisis...';
       
@@ -1094,7 +1202,6 @@ const Exporter = (() => {
       } catch (err) { 
         console.error(err); UI.els.progressWrap.classList.add('hidden'); handleApiError(err); 
       } finally {
-        // Kembalikan tombol walau sukses atau gagal
         UI.els.analyzeBtn.disabled = false;
         UI.els.analyzeBtn.textContent = '✨ Jalankan Analisis AI';
       }
@@ -1158,7 +1265,7 @@ const Exporter = (() => {
     UI.els.exportMd.addEventListener('click', () => { if (state.result) Exporter.exportMd(state.ingestData, state.result, state.improveResult); });
     UI.els.exportJson.addEventListener('click', () => { if (state.result) Exporter.exportJson(state.ingestData, state.result, state.improveResult); });
     UI.els.startOverBtn.addEventListener('click', () => {
-      Utils.revokeObjectURL(state.ingestData?.objectUrl); // Cegah memory leak
+      Utils.revokeObjectURL(state.ingestData?.objectUrl);
       state.file = null; state.ingestData = null; state.result = null; state.improveResult = null;
       UI.els.resultsRoot.classList.add('hidden'); UI.els.resultsRoot.classList.remove('has-results');
       UI.els.improveResult.classList.add('hidden'); UI.els.previewWrap.classList.add('hidden'); UI.els.uploadActions.classList.add('hidden');
@@ -1264,6 +1371,116 @@ const Exporter = (() => {
       UI.els.freeTitle.value = ''; UI.els.freeTheme.value = ''; UI.els.freeDuration.value = ''; UI.els.freeStyle.value = ''; UI.els.freeMateri.value = '';
       UI.els.freeResultsRoot.classList.add('hidden'); UI.els.freeResultsRoot.classList.remove('has-results');
       document.getElementById('freeUploadSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
+  /* ---- Hard-Sell Mode ---- */
+  async function loadHsImages(files) {
+    hsState.images = [];
+    for (const file of files) {
+      if (file.type.startsWith('image/')) {
+        hsState.images.push(await Utils.fileToDataUrl(file));
+      }
+    }
+    if (hsState.images.length > 0) {
+      UI.els.hsImagePreview.classList.remove('hidden');
+      UI.els.hsImagePreview.innerHTML = hsState.images.map(src => `<img src="${src}" alt="Foto Produk" />`).join('');
+    } else {
+      UI.els.hsImagePreview.classList.add('hidden');
+    }
+  }
+
+  function loadHsVideo(file) {
+    if (!file.type.startsWith('video/')) return;
+    Utils.revokeObjectURL(hsState.ingestData?.objectUrl);
+    hsState.videoFile = file;
+    UI.els.hsPreviewVideo.src = URL.createObjectURL(file);
+    UI.els.hsVideoPreviewWrap.classList.remove('hidden');
+  }
+
+  function wireHardSell() {
+    const { hsImageDropZone, hsImageInput, hsImageBrowseBtn, hsVideoDropZone, hsVideoInput, hsVideoBrowseBtn, hsAnalyzeBtn, hsStartOverBtn } = UI.els;
+
+    hsImageBrowseBtn.addEventListener('click', (e) => { e.stopPropagation(); hsImageInput.click(); });
+    hsImageDropZone.addEventListener('click', () => hsImageInput.click());
+    hsImageInput.addEventListener('change', (e) => loadHsImages(e.target.files));
+    ['dragenter', 'dragover'].forEach(evt => hsImageDropZone.addEventListener(evt, (e) => { e.preventDefault(); hsImageDropZone.classList.add('drag-over'); }));
+    ['dragleave', 'drop'].forEach(evt => hsImageDropZone.addEventListener(evt, (e) => { e.preventDefault(); hsImageDropZone.classList.remove('drag-over'); }));
+    hsImageDropZone.addEventListener('drop', (e) => { if (e.dataTransfer.files?.length) loadHsImages(e.dataTransfer.files); });
+
+    hsVideoBrowseBtn.addEventListener('click', (e) => { e.stopPropagation(); hsVideoInput.click(); });
+    hsVideoDropZone.addEventListener('click', () => hsVideoInput.click());
+    hsVideoInput.addEventListener('change', (e) => { if (e.target.files?.[0]) loadHsVideo(e.target.files[0]); });
+    ['dragenter', 'dragover'].forEach(evt => hsVideoDropZone.addEventListener(evt, (e) => { e.preventDefault(); hsVideoDropZone.classList.add('drag-over'); }));
+    ['dragleave', 'drop'].forEach(evt => hsVideoDropZone.addEventListener(evt, (e) => { e.preventDefault(); hsVideoDropZone.classList.remove('drag-over'); }));
+    hsVideoDropZone.addEventListener('drop', (e) => { const f = e.dataTransfer.files?.[0]; if (f) loadHsVideo(f); });
+
+    hsAnalyzeBtn.addEventListener('click', async () => {
+      if (hsState.images.length === 0) { UI.toast('Unggah minimal 1 foto produk dulu.'); return; }
+      if (!Storage.hasKey()) { UI.toast('Hubungkan API key dulu.'); UI.openModal(UI.els.apiKeyModal); return; }
+      
+      const form = {
+        name: UI.els.hsProdName.value.trim() || 'Produk',
+        offer: UI.els.hsOffer.value.trim(),
+        sellingPoint: UI.els.hsSellingPoint.value.trim(),
+        duration: UI.els.hsDuration.value
+      };
+      hsState.form = form;
+
+      UI.els.hsAnalyzeBtn.disabled = true;
+      UI.els.hsProgressWrap.classList.remove('hidden');
+      UI.els.hsProgressFill.style.width = '15%';
+      UI.els.hsProgressLabel.textContent = 'Memproses...';
+
+      try {
+        let ingestData = null;
+        if (hsState.videoFile) {
+          UI.els.hsProgressLabel.textContent = 'Menganalisis video referensi...';
+          ingestData = await VideoIngest.ingest(hsState.videoFile, hiddenHsVideo, (pct) => {
+            UI.els.hsProgressFill.style.width = `${Utils.clamp(Math.round(pct * 0.5), 10, 50)}%`;
+          });
+          hsState.ingestData = ingestData;
+        }
+
+        UI.els.hsProgressFill.style.width = '60%';
+        UI.els.hsProgressLabel.textContent = 'Mengirim ke AI...';
+        
+        const result = await HardSellClient.analyze(form, hsState.images, ingestData);
+        hsState.result = result;
+
+        UI.renderHardSellConcept(result);
+        UI.renderHardSellAssets(result);
+        UI.els.hardSellResultsRoot.classList.remove('hidden');
+        UI.els.hardSellResultsRoot.classList.add('has-results');
+        UI.els.hardSellResultsRoot.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        Storage.saveHistory({ id: Date.now(), date: new Date().toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }), mode: 'Hard-Sell', title: form.name, result });
+
+        UI.els.hsProgressFill.style.width = '100%';
+        UI.els.hsProgressLabel.textContent = 'Selesai!';
+        setTimeout(() => UI.els.hsProgressWrap.classList.add('hidden'), 500);
+      } catch (err) {
+        console.error(err);
+        UI.els.hsProgressWrap.classList.add('hidden');
+        handleApiError(err);
+      } finally {
+        UI.els.hsAnalyzeBtn.disabled = false;
+      }
+    });
+
+    UI.els.copyHsAssetBtn.addEventListener('click', () => copyText(UI.els.hsAssetOutput.textContent));
+    
+    UI.els.hsExportTxt.addEventListener('click', () => { if (hsState.result) Exporter.exportPromoTxt(hsState.form, hsState.result); });
+    UI.els.hsExportMd.addEventListener('click', () => { if (hsState.result) Exporter.exportPromoMd(hsState.form, hsState.result); });
+    UI.els.hsExportJson.addEventListener('click', () => { if (hsState.result) Exporter.exportPromoJson(hsState.form, hsState.result); });
+
+    hsStartOverBtn.addEventListener('click', () => {
+      hsState.images = []; hsState.videoFile = null; hsState.ingestData = null; hsState.result = null; hsState.form = null;
+      UI.els.hsImageInput.value = ''; UI.els.hsVideoInput.value = '';
+      UI.els.hsImagePreview.classList.add('hidden'); UI.els.hsImagePreview.innerHTML = '';
+      UI.els.hsVideoPreviewWrap.classList.add('hidden');
+      UI.els.hardSellResultsRoot.classList.add('hidden'); UI.els.hardSellResultsRoot.classList.remove('has-results');
+      document.getElementById('hardSellUploadSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   }
 
